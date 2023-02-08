@@ -1,0 +1,24 @@
+server:
+  port: 8080
+spring:
+  application:
+    #应用名称
+    name: reggie_takeaway
+  datasource:
+    druid:
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      url: jdbc:mysql://localhost:3306/reggietakeaway?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowPublicKeyRetrieval=true
+      username: root
+      password: 123456
+mybatis-plus:
+  configuration:
+    #在映射实体或者属性时，将数据库中表名和字段名中的下划线去掉，按照驼峰命名法映射
+    #把数据库下划线命名规范改成驼峰命名规范
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    #全局id生成策略，雪花算法,是一种生成分布式全局唯一ID的算法
+  global-config:
+    db-config:
+      id-type: ASSIGN_ID
+reggie:
+  path: D:\\pic\
