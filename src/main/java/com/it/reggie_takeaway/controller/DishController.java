@@ -13,9 +13,12 @@ import com.it.reggie_takeaway.service.DishService;
 import org.apache.commons.lang.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -33,6 +36,9 @@ public class DishController {
 	@Autowired
 	private DishFlavorService dishFlavorService;
 
+	@Autowired
+	private RedisTemplate redisTemplate;
+
 
 	/**
 	 * 保存新增菜品方法
@@ -42,6 +48,11 @@ public class DishController {
 	@PostMapping
 	public R<String> save(@RequestBody DishDto dishDto){
 		dishService.saveWithFlavor(dishDto);
+
+		//清理某个分类下面的缓存
+		String key="dish_"+dishDto.getCategoryId()+"_1";
+		redisTemplate.delete(key);
+
 		return R.success("新增菜品成功");
 	}
 
@@ -119,13 +130,23 @@ public class DishController {
 	}
 
 	/**
-	 * 修改菜品信息
+	 * 修改菜品信息(更新
 	 * @param dishDto   修改的信息
 	 * @return
 	 */
 	@PutMapping
 	public R<String> update(@RequestBody DishDto dishDto){
 		dishService.updateWithFlavor(dishDto);
+		/*
+		因为新增菜品之后菜品进入了数据库，如果缓存不清理，list方法能直接在
+		redis中查询到菜品，所以不会查数据库，导致新增菜品不显示
+		(所以需要插入之后清除缓存
+		 */
+
+		//清理某个分类下面的缓存
+		String key="dish_"+dishDto.getCategoryId()+"_1";
+		redisTemplate.delete(key);
+
 		return R.success("修改菜品成功");
 	}
 
@@ -155,6 +176,27 @@ public class DishController {
 	 */
 	@GetMapping("/list")
 	public R<List<DishDto>> list(Dish dish){
+		/*
+		1.菜品数据先从redis中获取数据
+		2.如果存在则直接获取
+		3.不存在则从数据库获取，并且存入缓存中
+		（key从哪获得
+		 */
+
+		//查询结果
+		List<DishDto> dishDtos=null;
+
+		//动态拼接key
+		String key="dish_"+dish.getCategoryId()+"_"+dish.getStatus();
+
+		//从redis中获取数据
+		dishDtos = (List<DishDto>) redisTemplate.opsForValue().get(key);
+
+		if (dishDtos!=null){
+			//如果存在则直接获取
+			return R.success(dishDtos);
+		}
+
 		//条件构造器
 		LambdaQueryWrapper<Dish> queryWrapper=new LambdaQueryWrapper<>();
 		queryWrapper.eq(dish.getCategoryId()!=null,Dish::getCategoryId,dish.getCategoryId());
@@ -166,7 +208,7 @@ public class DishController {
 		/*
 		 * 上面复制的方法
 		 */
-		List<DishDto> dtoList=list.stream().map((item)->{
+		dishDtos=list.stream().map((item)->{
 			DishDto dishDto=new DishDto();
 			//1.
 			BeanUtils.copyProperties(item,dishDto);
@@ -192,6 +234,9 @@ public class DishController {
 			return dishDto;
 		}).collect(Collectors.toList());
 
-		return R.success(dtoList);
+		//不存在则从数据库获取，并且存入缓存中
+		redisTemplate.opsForValue().set(key,dishDtos,60, TimeUnit.MINUTES);
+
+		return R.success(dishDtos);
 	}
 }
